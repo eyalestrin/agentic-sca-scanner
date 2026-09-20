@@ -115,7 +115,8 @@ Executing the scanner produces the following outputs:
 1. **Requested report (`sca_report.md`, `sca_report.html`, or `sca_report.json`):**
    A structured report containing:
    - **Executive Summary:** Total packages scanned, direct vs. transitive count, total vulnerability count, and unpatched package count.
-   - **Detailed Findings:** A breakdown for each vulnerable package including Package Name, Declared Version, Ecosystem, Location, Transitive Dependency Chain, Vulnerability ID (CVE/GHSA), Severity Level, Summary, Recommended Upgrade Action, or an explicit `NO_PATCH_AVAILABLE` note.
+   - **Dependency Terminology:** `Direct` means declared by the project; `Transitive` means pulled in by another dependency.
+   - **Detailed Findings:** Only vulnerable packages, including Package Name, Declared Version, Ecosystem, Dependency Type, Vulnerability ID, known CVE aliases when provided by OSV, Summary, Recommended Upgrade Action, or an explicit `NO_PATCH_AVAILABLE` note.
 
 2. **`sca_security_report.pdf`:**
    A formatted PDF report generated on every run, regardless of the requested

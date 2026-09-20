@@ -24,6 +24,7 @@ REPORT_MARKDOWN = "sca_report.md"
 REPORT_HTML = "sca_report.html"
 REPORT_JSON = "sca_report.json"
 MANDATORY_PDF = "sca_security_report.pdf"
+SUPPORTED_REPORT_SUFFIXES = {'.md', '.html', '.json', '.pdf'}
 
 class DependencyScanner:
     def __init__(self, root_dir: str):
@@ -422,6 +423,8 @@ def generate_json_report(results: List[Dict[str, Any]], output_file: str = REPOR
 def generate_reports(results: List[Dict[str, Any]], output_file: str):
     output_path = Path(output_file)
     suffix = output_path.suffix.lower()
+    if suffix not in SUPPORTED_REPORT_SUFFIXES:
+        raise ValueError("Output filename must end with .md, .html, .json, or .pdf")
     if suffix == '.html':
         generate_html_report(results, output_file)
     elif suffix == '.json':

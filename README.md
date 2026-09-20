@@ -98,8 +98,9 @@ You can use this skill directly within Visual Studio Code or through an AI Codin
    python3 ~/agentic_sca_scanner/sca_scanner.py --path . --output sca_report.md
    ```
 
-   Choose `.md`, `.html`, `.json`, or `.pdf` for the requested report. Every
-   run also generates the mandatory `sca_security_report.pdf`.
+   Choose exactly one requested output: `.md`, `.html`, `.json`, or `.pdf`.
+   The scanner generates that requested format only, plus the mandatory
+   `sca_security_report.pdf`. It does not generate the other report formats.
 
 ### Option 2: AI Agent / Copilot Skill Integration
 1. Copy `SKILL.md` into your workspace skills catalog (e.g., `.vscode/skills/SKILL.md` or `.github/copilot-instructions.md`).

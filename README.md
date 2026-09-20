@@ -90,8 +90,16 @@ You can use this skill directly within Visual Studio Code or through an AI Codin
 2. Open the integrated terminal (`Ctrl + ~` or `Cmd + ~`).
 3. Run the scanner against your target workspace or repository:
    ```bash
-   python3 /path/to/agentic-sca-scanner/sca_scanner.py --path . --output sca_report.html
+   python3 /path/to/agentic_sca_scanner/sca_scanner.py --path . --output sca_report.md
    ```
+
+   For the standard local checkout used in this environment:
+   ```bash
+   python3 ~/agentic_sca_scanner/sca_scanner.py --path . --output sca_report.md
+   ```
+
+   The scanner writes Markdown. Use a `.md` output filename; it does not
+   generate HTML merely because the filename ends in `.html`.
 
 ### Option 2: AI Agent / Copilot Skill Integration
 1. Copy `SKILL.md` into your workspace skills catalog (e.g., `.vscode/skills/SKILL.md` or `.github/copilot-instructions.md`).

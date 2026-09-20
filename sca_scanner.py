@@ -17,7 +17,7 @@ from typing import Dict, List, Any, Optional
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, LongTable, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, LongTable, Table, TableStyle
 
 OSV_API_URL = "https://api.osv.dev/v1/query"
 REPORT_MARKDOWN = "sca_report.md"
@@ -27,6 +27,7 @@ MANDATORY_PDF = "sca_security_report.pdf"
 SUPPORTED_REPORT_SUFFIXES = {'.md', '.html', '.json', '.pdf'}
 REPORT_FILES = {"sca_report.md", "sca_report.html", "sca_report.json", "sca_report.pdf", MANDATORY_PDF}
 SEVERITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "UNKNOWN": 4}
+REPORT_SEVERITIES = ("NO_PATCH_AVAILABLE", "CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN")
 
 
 def cleanup_previous_reports() -> None:
@@ -270,8 +271,22 @@ def vulnerability_identifiers(vulnerability: Dict[str, Any]) -> str:
     return vulnerability.get('id', 'Unknown') + (f" ({', '.join(cves)})" if cves else '')
 
 
+def vulnerability_severity_counts(results: List[Dict[str, Any]]) -> Dict[str, int]:
+    """Counts individual vulnerabilities in report display order."""
+    counts = {severity: 0 for severity in REPORT_SEVERITIES}
+    for package in results:
+        for vulnerability in package['vulnerabilities']:
+            if not vulnerability['fixed_versions']:
+                counts['NO_PATCH_AVAILABLE'] += 1
+            else:
+                severity = vulnerability_severity(vulnerability)
+                counts[severity if severity in counts else 'UNKNOWN'] += 1
+    return counts
+
+
 def generate_markdown_report(results: List[Dict[str, Any]], output_file: str):
     summary = report_summary(results)
+    severity_counts = vulnerability_severity_counts(results)
     vulnerable_packages = summary['vulnerable_packages']
     report = []
     report.append("# Software Composition Analysis (SCA) & Vulnerability Report\n")
@@ -280,6 +295,11 @@ def generate_markdown_report(results: List[Dict[str, Any]], output_file: str):
     report.append(f"- **Vulnerable Packages:** {len(vulnerable_packages)}")
     report.append(f"- **Total Identified Vulnerabilities:** {summary['total_vulns']}")
     report.append(f"- **Packages with No Available Upstream Patch:** {summary['unpatched_count']}\n")
+    report.append("| Vulnerability Severity | Identified Vulnerabilities |")
+    report.append("| :--- | ---: |")
+    for severity, count in vulnerability_severity_counts(results).items():
+        report.append(f"| **{severity}** | {count} |")
+    report.append("")
     report.append("## Dependency Terminology\n")
     report.append("- **Direct:** Declared directly by the project in a dependency manifest.")
     report.append("- **Transitive:** Pulled in indirectly by another dependency. Update the parent dependency or dependency override.\n")
@@ -335,6 +355,11 @@ def html_escape(value: Any) -> str:
 
 def generate_html_report(results: List[Dict[str, Any]], output_file: str):
     summary = report_summary(results)
+    severity_counts = vulnerability_severity_counts(results)
+    severity_rows = ''.join(
+        f'<tr class="{"no-patch" if severity == "NO_PATCH_AVAILABLE" else ""}"><td><b>{severity}</b></td><td>{count}</td></tr>'
+        for severity, count in severity_counts.items()
+    )
     rows = []
     for package in summary['vulnerable_packages']:
         vulnerabilities = package['vulnerabilities']
@@ -390,6 +415,9 @@ code {{ overflow-wrap: anywhere; word-break: break-word; }} a {{ overflow-wrap: 
 <li>Vulnerable Packages: <b>{len(summary['vulnerable_packages'])}</b></li>
 <li>Total Identified Vulnerabilities: <b>{summary['total_vulns']}</b></li>
 <li>Packages with No Available Upstream Patch: <b>{summary['unpatched_count']}</b></li></ul>
+<table class="severity-summary"><thead><tr><th>Vulnerability Severity</th><th>Identified Vulnerabilities</th></tr></thead><tbody>
+{severity_rows}
+</tbody></table>
 <h2>Dependency Terminology</h2>
 <p><b>Direct:</b> Declared directly by the project in a dependency manifest.</p>
 <p><b>Transitive:</b> Pulled in indirectly by another dependency. Update the parent dependency or dependency override.</p>
@@ -403,6 +431,7 @@ code {{ overflow-wrap: anywhere; word-break: break-word; }} a {{ overflow-wrap: 
 
 def generate_pdf_report(results: List[Dict[str, Any]], output_file: str = MANDATORY_PDF):
     summary = report_summary(results)
+    severity_counts = vulnerability_severity_counts(results)
     styles = getSampleStyleSheet()
     body = ParagraphStyle('BodyWrap', parent=styles['BodyText'], fontSize=9, leading=11, wordWrap='CJK')
     code = ParagraphStyle('CodeWrap', parent=body, fontName='Courier', fontSize=8, leading=10, wordWrap='CJK')
@@ -433,7 +462,14 @@ def generate_pdf_report(results: List[Dict[str, Any]], output_file: str = MANDAT
     table_style = [('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e2e8f0')), ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#cbd5e1')), ('VALIGN', (0, 0), (-1, -1), 'TOP'), ('PADDING', (0, 0), (-1, -1), 5)]
     table_style.extend(('BACKGROUND', (0, row), (-1, row), colors.HexColor('#fee2e2')) for row in no_patch_rows)
     table.setStyle(TableStyle(table_style))
-    story.extend([table, Spacer(1, 14), Paragraph('Dependency Terminology', styles['Heading2']), Paragraph('<b>Direct:</b> Declared directly by the project in a dependency manifest.', body), Paragraph('<b>Transitive:</b> Pulled in indirectly by another dependency. Update the parent dependency or dependency override.', body), Spacer(1, 10), Paragraph('Detailed Vulnerability Findings &amp; Guidance', styles['Heading2'])])
+    severity_table_data = [['Vulnerability Severity', 'Identified Vulnerabilities']]
+    severity_table_data.extend([[Paragraph(severity, body), Paragraph(str(count), body)] for severity, count in severity_counts.items()])
+    severity_table = Table(severity_table_data, repeatRows=1, colWidths=[250, 100])
+    severity_style = [('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e2e8f0')), ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#cbd5e1')), ('VALIGN', (0, 0), (-1, -1), 'TOP'), ('PADDING', (0, 0), (-1, -1), 5)]
+    if severity_counts['NO_PATCH_AVAILABLE']:
+        severity_style.append(('BACKGROUND', (0, 1), (-1, 1), colors.HexColor('#fee2e2')))
+    severity_table.setStyle(TableStyle(severity_style))
+    story.extend([severity_table, Spacer(1, 14), Paragraph('Dependency Terminology', styles['Heading2']), Paragraph('<b>Direct:</b> Declared directly by the project in a dependency manifest.', body), Paragraph('<b>Transitive:</b> Pulled in indirectly by another dependency. Update the parent dependency or dependency override.', body), Spacer(1, 10), Paragraph('Detailed Vulnerability Findings &amp; Guidance', styles['Heading2'])])
     if not summary['vulnerable_packages']:
         story.append(Paragraph('No vulnerable packages identified.', body))
     for package in summary['vulnerable_packages']:
@@ -454,6 +490,7 @@ def generate_json_report(results: List[Dict[str, Any]], output_file: str = REPOR
             key: value for key, value in report_summary(results).items()
             if key != 'vulnerable_packages'
         },
+        'severity_counts': vulnerability_severity_counts(results),
         'packages': report_summary(results)['vulnerable_packages'],
     }, indent=2), encoding='utf-8')
 

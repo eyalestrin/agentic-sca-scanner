@@ -329,6 +329,7 @@ def generate_html_report(results: List[Dict[str, Any]], output_file: str):
 
     details = []
     for package in summary['vulnerable_packages']:
+        vulnerability_details = []
         for vulnerability in package['vulnerabilities']:
             references = ''.join(
                 f"<li><a href=\"{html_escape(url)}\">{html_escape(url)}</a></li>"
@@ -336,16 +337,20 @@ def generate_html_report(results: List[Dict[str, Any]], output_file: str):
             )
             fix = (f"Upgrade to {html_escape(vulnerability['fixed_versions'][0])} or higher"
                    if vulnerability['fixed_versions'] else 'NO_PATCH_AVAILABLE')
-            details.append(
-                f"<article class=\"finding{' no-patch' if not vulnerability['fixed_versions'] else ''}\"><h3>{html_escape(vulnerability_identifiers(vulnerability))}: "
-                f"{html_escape(package['name'])} {html_escape(package['version'])}</h3>"
+            vulnerability_details.append(
+                f"<section><h4>{html_escape(vulnerability_identifiers(vulnerability))}</h4>"
                 f"<p><b>Summary:</b> {html_escape(vulnerability['summary'])}</p>"
-                f"<p><b>Manifest:</b> <code>{html_escape(package['manifest'])}</code> | "
-                f"<b>Ecosystem:</b> {html_escape(package['ecosystem'])} | "
-                f"<b>Type:</b> {html_escape(package['type'])}</p>"
-                f"<p><b>Recommended Action:</b> {fix}</p>"
-                f"<ul>{references}</ul></article>"
+                f"<p><b>Recommended Action:</b> {fix}</p><ul>{references}</ul></section>"
             )
+        package_class = ' no-patch' if has_no_upstream_fix(package) else ''
+        details.append(
+            f"<article class=\"finding{package_class}\"><h3>{html_escape(package['name'])} "
+            f"{html_escape(package['version'])}</h3>"
+            f"<p><b>Manifest:</b> <code>{html_escape(package['manifest'])}</code> | "
+            f"<b>Ecosystem:</b> {html_escape(package['ecosystem'])} | "
+            f"<b>Dependency Type:</b> {html_escape(package['type'])}</p>"
+            f"{''.join(vulnerability_details)}</article>"
+        )
 
     html = f"""<!doctype html>
 <html><head><meta charset=\"utf-8\"><title>SCA Vulnerability Report</title>
@@ -411,8 +416,10 @@ def generate_pdf_report(results: List[Dict[str, Any]], output_file: str = MANDAT
     if not summary['vulnerable_packages']:
         story.append(Paragraph('No vulnerable packages identified.', body))
     for package in summary['vulnerable_packages']:
+        story.append(Paragraph(f"{html_escape(package['name'])} {html_escape(package['version'])}", styles['Heading3']))
+        story.append(Paragraph(f"<b>Manifest:</b> {html_escape(package['manifest'])} | <b>Ecosystem:</b> {html_escape(package['ecosystem'])} | <b>Dependency Type:</b> {html_escape(package['type'])}", body))
         for vulnerability in package['vulnerabilities']:
-            story.extend([Paragraph(f"{html_escape(vulnerability_identifiers(vulnerability))}: {html_escape(package['name'])} {html_escape(package['version'])}", styles['Heading3']), Paragraph(f"<b>Summary:</b> {html_escape(vulnerability['summary'])}", body), Paragraph(f"<b>Manifest:</b> {html_escape(package['manifest'])} | <b>Ecosystem:</b> {html_escape(package['ecosystem'])} | <b>Dependency Type:</b> {html_escape(package['type'])}", body), Paragraph(f"<b>Recommended Action:</b> {html_escape(vulnerability['fixed_versions'][0]) if vulnerability['fixed_versions'] else 'NO_PATCH_AVAILABLE'}", body), Spacer(1, 8)])
+            story.extend([Paragraph(html_escape(vulnerability_identifiers(vulnerability)), styles['Heading4']), Paragraph(f"<b>Summary:</b> {html_escape(vulnerability['summary'])}", body), Paragraph(f"<b>Recommended Action:</b> {html_escape(vulnerability['fixed_versions'][0]) if vulnerability['fixed_versions'] else 'NO_PATCH_AVAILABLE'}", body), Spacer(1, 8)])
     document.build(story)
 
 

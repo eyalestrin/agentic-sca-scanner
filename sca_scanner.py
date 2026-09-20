@@ -25,6 +25,16 @@ REPORT_HTML = "sca_report.html"
 REPORT_JSON = "sca_report.json"
 MANDATORY_PDF = "sca_security_report.pdf"
 SUPPORTED_REPORT_SUFFIXES = {'.md', '.html', '.json', '.pdf'}
+REPORT_FILES = {"sca_report.md", "sca_report.html", "sca_report.json", "sca_report.pdf", MANDATORY_PDF}
+
+
+def cleanup_previous_reports() -> None:
+    """Deletes previous SCA reports before starting a new scan."""
+    for report_name in REPORT_FILES:
+        report_path = Path.cwd() / report_name
+        if report_path.exists():
+            report_path.unlink()
+            print(f"[+] Removed previous report: {report_path}")
 
 class DependencyScanner:
     def __init__(self, root_dir: str):
@@ -446,6 +456,7 @@ def main():
 
     args = parser.parse_args()
 
+    cleanup_previous_reports()
     scanner = DependencyScanner(args.path)
     dependencies = scanner.scan_directory()
 

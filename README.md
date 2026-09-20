@@ -90,7 +90,7 @@ You can use this skill directly within Visual Studio Code or through an AI Codin
 2. Open the integrated terminal (`Ctrl + ~` or `Cmd + ~`).
 3. Run the scanner against your target workspace or repository:
    ```bash
-   python3 /path/to/agentic-sca-scanner/sca_scanner.py --path . --output sca_report.md
+   python3 /path/to/agentic-sca-scanner/sca_scanner.py --path . --output sca_report.html
    ```
 
 ### Option 2: AI Agent / Copilot Skill Integration

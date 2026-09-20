@@ -98,8 +98,8 @@ You can use this skill directly within Visual Studio Code or through an AI Codin
    python3 ~/agentic_sca_scanner/sca_scanner.py --path . --output sca_report.md
    ```
 
-   The scanner writes Markdown. Use a `.md` output filename; it does not
-   generate HTML merely because the filename ends in `.html`.
+   Choose `.md`, `.html`, or `.pdf` for the requested report. Every run also
+   generates the mandatory `sast_security_report.pdf`.
 
 ### Option 2: AI Agent / Copilot Skill Integration
 1. Copy `SKILL.md` into your workspace skills catalog (e.g., `.vscode/skills/SKILL.md` or `.github/copilot-instructions.md`).
@@ -112,12 +112,16 @@ You can use this skill directly within Visual Studio Code or through an AI Codin
 
 Executing the scanner produces the following outputs:
 
-1. **`sca_report.md` (Markdown Security Report):**
+1. **Requested report (`.md`, `.html`, or `.pdf`):**
    A structured report containing:
    - **Executive Summary:** Total packages scanned, direct vs. transitive count, total vulnerability count, and unpatched package count.
    - **Detailed Findings:** A breakdown for each vulnerable package including Package Name, Declared Version, Ecosystem, Location, Transitive Dependency Chain, Vulnerability ID (CVE/GHSA), Severity Level, Summary, Recommended Upgrade Action, or an explicit `NO_PATCH_AVAILABLE` note.
 
-2. **Console Output:**
+2. **`sast_security_report.pdf`:**
+   A formatted PDF report generated on every run, regardless of the requested
+   output format.
+
+3. **Console Output:**
    Real-time progress logging showing package counts, API querying progress, and final report save confirmation.
 
 ---
@@ -125,5 +129,6 @@ Executing the scanner produces the following outputs:
 ## Troubleshooting & Limitations
 
 - **Network Connection:** The scanner queries `https://api.osv.dev/v1/query` in real-time. An active internet connection is required to fetch vulnerability advisories.
+- **PDF Dependency:** Install ReportLab before running the scanner: `python3 -m pip install reportlab` (or `python -m pip install reportlab` on Windows).
 - **Lockfile Recommendation:** Scanning directories without lockfiles (e.g., only `package.json` without `package-lock.json`) will scan declared version ranges rather than exact resolved transitive dependency trees.
 - **Path Resolution:** If running `sca_scanner.py` from outside the target folder, always provide the explicit directory using the `--path` argument.

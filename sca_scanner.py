@@ -14,7 +14,13 @@ import re
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+
 OSV_API_URL = "https://api.osv.dev/v1/query"
+MANDATORY_PDF = "sast_security_report.pdf"
 
 class DependencyScanner:
     def __init__(self, root_dir: str):
@@ -195,7 +201,7 @@ class OSVAuditor:
         return pkg_result
 
 
-def generate_report(results: List[Dict[str, Any]], output_file: str):
+def report_summary(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     total_packages = len(results)
     vulnerable_packages = [r for r in results if r['vulnerabilities']]
     total_vulns = sum(len(r['vulnerabilities']) for r in vulnerable_packages)
@@ -206,13 +212,24 @@ def generate_report(results: List[Dict[str, Any]], output_file: str):
             if not v['fixed_versions']:
                 unpatched_count += 1
 
+    return {
+        'total_packages': total_packages,
+        'vulnerable_packages': vulnerable_packages,
+        'total_vulns': total_vulns,
+        'unpatched_count': unpatched_count,
+    }
+
+
+def generate_markdown_report(results: List[Dict[str, Any]], output_file: str):
+    summary = report_summary(results)
+    vulnerable_packages = summary['vulnerable_packages']
     report = []
     report.append("# Software Composition Analysis (SCA) & Vulnerability Report\n")
     report.append("## Executive Summary\n")
-    report.append(f"- **Total Packages Identified:** {total_packages}")
+    report.append(f"- **Total Packages Identified:** {summary['total_packages']}")
     report.append(f"- **Vulnerable Packages:** {len(vulnerable_packages)}")
-    report.append(f"- **Total Identified Vulnerabilities:** {total_vulns}")
-    report.append(f"- **Packages with No Available Upstream Patch:** {unpatched_count}\n")
+    report.append(f"- **Total Identified Vulnerabilities:** {summary['total_vulns']}")
+    report.append(f"- **Packages with No Available Upstream Patch:** {summary['unpatched_count']}\n")
 
     report.append("| Package Name | Version | Ecosystem | Type | Vulnerabilities | Safe Upgrade Path |")
     report.append("| :--- | :--- | :--- | :--- | :--- | :--- |")
@@ -265,8 +282,109 @@ def generate_report(results: List[Dict[str, Any]], output_file: str):
 
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write("\n".join(report))
-    
-    print(f"\n[+] Scan complete. Report successfully generated at: {output_file}")
+
+
+def html_escape(value: Any) -> str:
+    return (str(value).replace('&', '&amp;').replace('<', '&lt;')
+            .replace('>', '&gt;').replace('"', '&quot;').replace("'", '&#39;'))
+
+
+def generate_html_report(results: List[Dict[str, Any]], output_file: str):
+    summary = report_summary(results)
+    rows = []
+    for package in results:
+        vulnerabilities = package['vulnerabilities']
+        vulnerability_text = '<br>'.join(html_escape(v['id']) for v in vulnerabilities) or 'None'
+        fixes = [v['fixed_versions'][0] for v in vulnerabilities if v['fixed_versions']]
+        fix_text = f"Upgrade to {html_escape(fixes[0])} or higher" if fixes else ('NO_PATCH_AVAILABLE' if vulnerabilities else 'N/A (Clean)')
+        rows.append(
+            f"<tr><td><b>{html_escape(package['name'])}</b></td>"
+            f"<td>{html_escape(package['version'])}</td><td>{html_escape(package['ecosystem'])}</td>"
+            f"<td>{html_escape(package['type'])}</td><td>{vulnerability_text}</td><td>{fix_text}</td></tr>"
+        )
+
+    details = []
+    for package in summary['vulnerable_packages']:
+        for vulnerability in package['vulnerabilities']:
+            references = ''.join(
+                f"<li><a href=\"{html_escape(url)}\">{html_escape(url)}</a></li>"
+                for url in vulnerability['references']
+            )
+            fix = (f"Upgrade to {html_escape(vulnerability['fixed_versions'][0])} or higher"
+                   if vulnerability['fixed_versions'] else 'NO_PATCH_AVAILABLE')
+            details.append(
+                f"<article class=\"finding\"><h3>{html_escape(vulnerability['id'])}: "
+                f"{html_escape(package['name'])} {html_escape(package['version'])}</h3>"
+                f"<p><b>Summary:</b> {html_escape(vulnerability['summary'])}</p>"
+                f"<p><b>Manifest:</b> <code>{html_escape(package['manifest'])}</code> | "
+                f"<b>Ecosystem:</b> {html_escape(package['ecosystem'])} | "
+                f"<b>Type:</b> {html_escape(package['type'])}</p>"
+                f"<p><b>Recommended Action:</b> {fix}</p>"
+                f"<ul>{references}</ul></article>"
+            )
+
+    html = f"""<!doctype html>
+<html><head><meta charset=\"utf-8\"><title>SCA Vulnerability Report</title>
+<style>
+* {{ box-sizing: border-box; }} body {{ margin: 20px; background: #f8fafc; color: #0f172a; font-family: Segoe UI, sans-serif; overflow-x: hidden; }}
+main {{ max-width: 1200px; margin: auto; }} h1, h2 {{ color: #0f172a; }}
+table {{ width: 100%; table-layout: fixed; border-collapse: collapse; background: white; margin: 16px 0 28px; }}
+th, td {{ padding: 10px; text-align: left; vertical-align: top; border-bottom: 1px solid #e2e8f0; overflow-wrap: anywhere; word-break: break-word; }}
+th {{ background: #e2e8f0; }} .finding {{ background: white; border-left: 4px solid #ea580c; padding: 14px; margin: 14px 0; overflow-wrap: anywhere; }}
+code {{ overflow-wrap: anywhere; word-break: break-word; }} a {{ overflow-wrap: anywhere; }}
+@media (max-width: 800px) {{ body {{ margin: 10px; }} th, td {{ padding: 7px; font-size: 13px; }} }}
+</style></head><body><main>
+<h1>Software Composition Analysis (SCA) &amp; Vulnerability Report</h1>
+<h2>Executive Summary</h2>
+<ul><li>Total Packages Identified: <b>{summary['total_packages']}</b></li>
+<li>Vulnerable Packages: <b>{len(summary['vulnerable_packages'])}</b></li>
+<li>Total Identified Vulnerabilities: <b>{summary['total_vulns']}</b></li>
+<li>Packages with No Available Upstream Patch: <b>{summary['unpatched_count']}</b></li></ul>
+<table><thead><tr><th>Package</th><th>Version</th><th>Ecosystem</th><th>Type</th><th>Vulnerabilities</th><th>Safe Upgrade</th></tr></thead>
+<tbody>{''.join(rows) if rows else '<tr><td colspan=\"6\">No packages identified.</td></tr>'}</tbody></table>
+<h2>Detailed Vulnerability Findings &amp; Guidance</h2>
+{''.join(details) if details else '<p>No known vulnerabilities detected across scanned packages.</p>'}
+</main></body></html>"""
+    Path(output_file).write_text(html, encoding='utf-8')
+
+
+def generate_pdf_report(results: List[Dict[str, Any]], output_file: str = MANDATORY_PDF):
+    summary = report_summary(results)
+    styles = getSampleStyleSheet()
+    body = ParagraphStyle('BodyWrap', parent=styles['BodyText'], fontSize=9, leading=11, wordWrap='CJK')
+    code = ParagraphStyle('CodeWrap', parent=body, fontName='Courier', fontSize=8, leading=10, wordWrap='CJK')
+    document = SimpleDocTemplate(output_file, pagesize=letter, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
+    story = [Paragraph('Software Composition Analysis (SCA) &amp; Vulnerability Report', styles['Title']), Paragraph('Executive Summary', styles['Heading2'])]
+    story.extend([Paragraph(f"Total Packages Identified: <b>{summary['total_packages']}</b>", body), Paragraph(f"Vulnerable Packages: <b>{len(summary['vulnerable_packages'])}</b>", body), Paragraph(f"Total Identified Vulnerabilities: <b>{summary['total_vulns']}</b>", body), Paragraph(f"Packages with No Available Upstream Patch: <b>{summary['unpatched_count']}</b>", body), Spacer(1, 10)])
+    table_data = [['Package', 'Version', 'Ecosystem', 'Type', 'Vulnerabilities', 'Safe Upgrade']]
+    for package in results:
+        vulns = ', '.join(v['id'] for v in package['vulnerabilities']) or 'None'
+        fixes = [v['fixed_versions'][0] for v in package['vulnerabilities'] if v['fixed_versions']]
+        table_data.append([Paragraph(str(package['name']), body), Paragraph(str(package['version']), body), Paragraph(str(package['ecosystem']), body), Paragraph(str(package['type']), body), Paragraph(vulns, body), Paragraph(fixes[0] if fixes else ('NO_PATCH_AVAILABLE' if package['vulnerabilities'] else 'N/A'), body)])
+    table = Table(table_data, repeatRows=1, colWidths=[100, 55, 65, 55, 115, 90])
+    table.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e2e8f0')), ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#cbd5e1')), ('VALIGN', (0, 0), (-1, -1), 'TOP'), ('PADDING', (0, 0), (-1, -1), 5)]))
+    story.extend([table, Spacer(1, 14), Paragraph('Detailed Vulnerability Findings &amp; Guidance', styles['Heading2'])])
+    if not summary['vulnerable_packages']:
+        story.append(Paragraph('No known vulnerabilities detected across scanned packages.', body))
+    for package in summary['vulnerable_packages']:
+        for vulnerability in package['vulnerabilities']:
+            story.extend([Paragraph(f"{vulnerability['id']}: {package['name']} {package['version']}", styles['Heading3']), Paragraph(f"<b>Summary:</b> {html_escape(vulnerability['summary'])}", body), Paragraph(f"<b>Manifest:</b> {html_escape(package['manifest'])} | <b>Ecosystem:</b> {package['ecosystem']} | <b>Type:</b> {package['type']}", body), Paragraph(f"<b>Recommended Action:</b> {html_escape(vulnerability['fixed_versions'][0]) if vulnerability['fixed_versions'] else 'NO_PATCH_AVAILABLE'}", body), Spacer(1, 8)])
+    document.build(story)
+
+
+def generate_reports(results: List[Dict[str, Any]], output_file: str):
+    output_path = Path(output_file)
+    suffix = output_path.suffix.lower()
+    if suffix == '.html':
+        generate_html_report(results, output_file)
+    elif suffix == '.pdf':
+        generate_pdf_report(results, output_file)
+    else:
+        generate_markdown_report(results, output_file)
+    if output_path.resolve() != Path(MANDATORY_PDF).resolve():
+        generate_pdf_report(results, MANDATORY_PDF)
+    print(f"\n[+] Report successfully generated at: {output_file}")
+    print(f"[+] Mandatory PDF report generated at: {MANDATORY_PDF}")
 
 
 def main():
@@ -286,7 +404,7 @@ def main():
     for pkg in dependencies:
         audited_results.append(OSVAuditor.check_vulnerability(pkg))
 
-    generate_report(audited_results, args.output)
+    generate_reports(audited_results, args.output)
 
 if __name__ == "__main__":
     main()

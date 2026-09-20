@@ -1,57 +1,30 @@
-# Agentic Software Composition Analysis (SCA) Scanner
+# Agentic SCA Scanner
 
-An open-source dependency vulnerability scanner and resolution engine inspired by the architecture of [agentic-sast-scanner](https://github.com/eyalestrin/agentic-sast-scanner).
-
-Instead of static code analysis (SAST), this tool focuses on **Software Composition Analysis (SCA)**: recursively discovering dependencies, mapping direct and transitive chains, matching installed package versions against known open-source vulnerability advisories (OSV/CVE/GHSA), and generating actionable remediation reports.
+Recursively discovering dependencies across project sub-folders, identifying all direct and transitive packages, checking them against open-source vulnerability databases (such as OSV), and generating actionable remediation reports.
 
 ---
 
-## Capabilities
+## Key Features
 
-- **Recursive Scanning:** Automatically traverses project directories and sub-folders to discover manifest files.
-- **Transitive Dependency Resolution:** Parses lock files (`package-lock.json`, `Pipfile.lock`, `go.mod`) to uncover deeply nested indirect dependencies.
-- **Open Advisory Querying:** Queries the official [OSV.dev API](https://osv.dev/) for real-time security advisory correlation across ecosystems.
-- **Unpatched Dependency Detection (`NO_PATCH_AVAILABLE`):** Clearly identifies packages that contain known security flaws but lack an upstream patch or replacement version in official registries, including mitigation guidance notes.
-- **Multi-Ecosystem Support:**
-  - Node.js (`package.json`, `package-lock.json`)
-  - Python (`requirements.txt`, `Pipfile.lock`)
-  - Go (`go.mod`)
+- **Recursive Sub-folder Scanning:** Discovers project manifests (`package.json`, `requirements.txt`) and lock files (`package-lock.json`, `Pipfile.lock`) across nested folders.
+- **Transitive Dependency Resolution:** Distinguishes between top-level direct dependencies and deep nested transitive child dependencies.
+- **OSV Database Integration:** Queries the official Open Source Vulnerability (OSV) API for verified package version advisories.
+- **Remediation & Patch Detection:** Automatically checks for minimum fixed versions in official repositories.
+- **Unpatched Vulnerability Detection:** Explicitly flags packages with known vulnerabilities where no upstream fix exists (`NO_PATCH_AVAILABLE`).
 
 ---
 
-## File Structure
+## Prerequisites
 
-```
-.
-├── SKILL.md         # Skill definition for LLM/Agentic tool execution
-├── sca_scanner.py   # Python execution script
-└── README.md        # Documentation and guide
-```
+Ensure Python 3.8+ and Git are installed on your system.
 
----
+### Installing Prerequisites
 
-## Quick Start
+#### Windows
+- **Python:** Download and run the official installer from [python.org](https://www.python.org/downloads/). Ensure **"Add Python to PATH"** is checked during installation.
+- **Git:** Download and install [Git for Windows](https://git-scm.com/download/win).
 
-### Requirements
-- Python 3.8+ (Uses standard library packages only; no external `pip` dependencies required).
-
-### Usage
-
-Run the scanner against any project root or source code directory:
-
+#### Linux (Ubuntu/Debian / WSL)
 ```bash
-python sca_scanner.py --path /path/to/your/project --output sca_report.md
-```
-
-### Command Options
-- `--path`: Root directory of the target project to scan (includes sub-directories).
-- `--output`: Path where the Markdown summary report will be saved (default: `sca_report.md`).
-
----
-
-## Report Features
-
-The generated Markdown report includes:
-1. **Executive Summary Matrix:** Overview of total package counts, vulnerable dependencies, and unpatched findings.
-2. **Tabular Summary:** Quick reference table with package versions, locations, vulnerability IDs, and safe target upgrade versions.
-3. **Deep Finding Detail & Remediation Guidance:** Full breakdown for each finding with direct advisory links, parent-child dependency trees, and explicit mitigation instructions for packages where no fixed version exists (`NO_PATCH_AVAILABLE`).
+sudo apt update
+sudo apt install -y python3 python3-pip git

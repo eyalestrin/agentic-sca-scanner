@@ -27,7 +27,7 @@ MANDATORY_PDF = "sca_security_report.pdf"
 SUPPORTED_REPORT_SUFFIXES = {'.md', '.html', '.json', '.pdf'}
 REPORT_FILES = {"sca_report.md", "sca_report.html", "sca_report.json", "sca_report.pdf", MANDATORY_PDF}
 SEVERITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "UNKNOWN": 4}
-REPORT_SEVERITIES = ("NO_PATCH_AVAILABLE", "CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN")
+REPORT_SEVERITIES = ("NO_PATCH_AVAILABLE", "CRITICAL", "HIGH", "MEDIUM", "LOW")
 
 
 def cleanup_previous_reports() -> None:
@@ -204,7 +204,8 @@ class OSVAuditor:
                             'id': v.get('id'),
                             'aliases': v.get('aliases', []),
                             'cve_ids': [alias for alias in v.get('aliases', []) if alias.startswith('CVE-')],
-                            'severity': str(v.get('database_specific', {}).get('severity', 'UNKNOWN')).upper(),
+                            'severity': extract_osv_severity(v),
+                            'cvss_vectors': [item.get('score') for item in v.get('severity', []) if item.get('score')],
                             'summary': v.get('summary', 'No summary available'),
                             'details': v.get('details', ''),
                             'references': [r.get('url') for r in v.get('references', []) if r.get('url')],
@@ -254,10 +255,37 @@ def has_no_upstream_fix(package: Dict[str, Any]) -> bool:
     )
 
 
+def normalize_severity(value: Any) -> str:
+    """Normalizes OSV severity labels without exposing UNKNOWN in reports."""
+    severity = str(value or '').upper()
+    if severity in {'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'}:
+        return severity
+    return 'MEDIUM'
+
+
+def extract_osv_severity(vulnerability: Dict[str, Any]) -> str:
+    """Uses OSV's severity label or numeric CVSS score with a medium fallback."""
+    label = vulnerability.get('database_specific', {}).get('severity')
+    if label:
+        return normalize_severity(label)
+    for severity in vulnerability.get('severity', []):
+        score_text = str(severity.get('score', ''))
+        match = re.search(r'\b(\d+(?:\.\d+)?)\b', score_text)
+        if match:
+            score = float(match.group(1))
+            if score >= 9.0:
+                return 'CRITICAL'
+            if score >= 7.0:
+                return 'HIGH'
+            if score >= 4.0:
+                return 'MEDIUM'
+            return 'LOW'
+    return 'MEDIUM'
+
+
 def vulnerability_severity(vulnerability: Dict[str, Any]) -> str:
-    """Returns the OSV-provided severity label without sorting by CVE or score."""
-    severity = str(vulnerability.get('severity', 'UNKNOWN')).upper()
-    return severity if severity in SEVERITY_ORDER else 'UNKNOWN'
+    """Returns the normalized OSV severity used for package ordering."""
+    return normalize_severity(vulnerability.get('severity'))
 
 
 def package_severity_rank(package: Dict[str, Any]) -> int:
@@ -279,9 +307,43 @@ def vulnerability_severity_counts(results: List[Dict[str, Any]]) -> Dict[str, in
             if not vulnerability['fixed_versions']:
                 counts['NO_PATCH_AVAILABLE'] += 1
             else:
-                severity = vulnerability_severity(vulnerability)
-                counts[severity if severity in counts else 'UNKNOWN'] += 1
+                counts[vulnerability_severity(vulnerability)] += 1
     return counts
+
+
+def consolidate_packages(results: List[Dict[str, Any]], root_dir: Path) -> List[Dict[str, Any]]:
+    """Merges duplicate package records so each package name appears once."""
+    grouped: Dict[str, Dict[str, Any]] = {}
+    for package in results:
+        key = package['name'].lower()
+        full_manifest = str((root_dir / package['manifest']).resolve())
+        if key not in grouped:
+            grouped[key] = dict(package)
+            grouped[key]['manifest_paths'] = [full_manifest]
+            grouped[key]['manifest'] = full_manifest
+            grouped[key]['versions'] = [package['version']]
+            grouped[key]['types'] = [package['type']]
+            grouped[key]['vulnerabilities'] = []
+        else:
+            current = grouped[key]
+            if full_manifest not in current['manifest_paths']:
+                current['manifest_paths'].append(full_manifest)
+            if package['version'] not in current['versions']:
+                current['versions'].append(package['version'])
+            if package['type'] not in current['types']:
+                current['types'].append(package['type'])
+
+        existing_ids = {vulnerability.get('id') for vulnerability in grouped[key]['vulnerabilities']}
+        for vulnerability in package['vulnerabilities']:
+            if vulnerability.get('id') not in existing_ids:
+                grouped[key]['vulnerabilities'].append(vulnerability)
+
+    consolidated = list(grouped.values())
+    for package in consolidated:
+        package['version'] = ', '.join(package.pop('versions'))
+        package['type'] = 'Direct' if 'Direct' in package.pop('types') else 'Transitive'
+        package['manifest'] = '; '.join(package.pop('manifest_paths'))
+    return consolidated
 
 
 def generate_markdown_report(results: List[Dict[str, Any]], output_file: str):
@@ -532,6 +594,7 @@ def main():
     for pkg in dependencies:
         audited_results.append(OSVAuditor.check_vulnerability(pkg))
 
+    audited_results = consolidate_packages(audited_results, scanner.root_dir)
     generate_reports(audited_results, args.output)
 
 if __name__ == "__main__":

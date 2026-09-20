@@ -26,6 +26,7 @@ REPORT_JSON = "sca_report.json"
 MANDATORY_PDF = "sca_security_report.pdf"
 SUPPORTED_REPORT_SUFFIXES = {'.md', '.html', '.json', '.pdf'}
 REPORT_FILES = {"sca_report.md", "sca_report.html", "sca_report.json", "sca_report.pdf", MANDATORY_PDF}
+SEVERITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "UNKNOWN": 4}
 
 
 def cleanup_previous_reports() -> None:
@@ -202,6 +203,7 @@ class OSVAuditor:
                             'id': v.get('id'),
                             'aliases': v.get('aliases', []),
                             'cve_ids': [alias for alias in v.get('aliases', []) if alias.startswith('CVE-')],
+                            'severity': str(v.get('database_specific', {}).get('severity', 'UNKNOWN')).upper(),
                             'summary': v.get('summary', 'No summary available'),
                             'details': v.get('details', ''),
                             'references': [r.get('url') for r in v.get('references', []) if r.get('url')],
@@ -219,7 +221,15 @@ class OSVAuditor:
 
 def report_summary(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     total_packages = len(results)
-    vulnerable_packages = [r for r in results if r['vulnerabilities']]
+    for package in results:
+        package['vulnerabilities'] = sorted(
+            package['vulnerabilities'],
+            key=lambda vulnerability: SEVERITY_ORDER.get(vulnerability_severity(vulnerability), SEVERITY_ORDER['UNKNOWN']),
+        )
+    vulnerable_packages = sorted(
+        (r for r in results if r['vulnerabilities']),
+        key=lambda package: (package_severity_rank(package), package['name'].lower()),
+    )
     total_vulns = sum(len(r['vulnerabilities']) for r in vulnerable_packages)
     unpatched_count = 0
 
@@ -241,6 +251,17 @@ def has_no_upstream_fix(package: Dict[str, Any]) -> bool:
     return bool(package['vulnerabilities']) and any(
         not vulnerability['fixed_versions'] for vulnerability in package['vulnerabilities']
     )
+
+
+def vulnerability_severity(vulnerability: Dict[str, Any]) -> str:
+    """Returns the OSV-provided severity label without sorting by CVE or score."""
+    severity = str(vulnerability.get('severity', 'UNKNOWN')).upper()
+    return severity if severity in SEVERITY_ORDER else 'UNKNOWN'
+
+
+def package_severity_rank(package: Dict[str, Any]) -> int:
+    """Ranks a package by its highest vulnerability severity."""
+    return min(SEVERITY_ORDER[vulnerability_severity(v)] for v in package['vulnerabilities'])
 
 
 def vulnerability_identifiers(vulnerability: Dict[str, Any]) -> str:
@@ -291,7 +312,7 @@ def generate_markdown_report(results: List[Dict[str, Any]], output_file: str):
                 report.append(f"- **Dependency Chain:** `{pkg['parent']}` -> `{pkg['name']}`")
             
             for v in pkg['vulnerabilities']:
-                report.append(f"\n#### Vulnerability ID: {vulnerability_identifiers(v)}")
+                report.append(f"\n#### {vulnerability_severity(v)} - Vulnerability ID: {vulnerability_identifiers(v)}")
                 report.append(f"- **Summary:** {v['summary']}")
                 if v['references']:
                     report.append(f"- **Advisory Link:** {v['references'][0]}")
@@ -338,7 +359,7 @@ def generate_html_report(results: List[Dict[str, Any]], output_file: str):
             fix = (f"Upgrade to {html_escape(vulnerability['fixed_versions'][0])} or higher"
                    if vulnerability['fixed_versions'] else 'NO_PATCH_AVAILABLE')
             vulnerability_details.append(
-                f"<section><h4>{html_escape(vulnerability_identifiers(vulnerability))}</h4>"
+                f"<section><h4>{html_escape(vulnerability_severity(vulnerability))} - {html_escape(vulnerability_identifiers(vulnerability))}</h4>"
                 f"<p><b>Summary:</b> {html_escape(vulnerability['summary'])}</p>"
                 f"<p><b>Recommended Action:</b> {fix}</p><ul>{references}</ul></section>"
             )
@@ -419,7 +440,7 @@ def generate_pdf_report(results: List[Dict[str, Any]], output_file: str = MANDAT
         story.append(Paragraph(f"{html_escape(package['name'])} {html_escape(package['version'])}", styles['Heading3']))
         story.append(Paragraph(f"<b>Manifest:</b> {html_escape(package['manifest'])} | <b>Ecosystem:</b> {html_escape(package['ecosystem'])} | <b>Dependency Type:</b> {html_escape(package['type'])}", body))
         for vulnerability in package['vulnerabilities']:
-            story.extend([Paragraph(html_escape(vulnerability_identifiers(vulnerability)), styles['Heading4']), Paragraph(f"<b>Summary:</b> {html_escape(vulnerability['summary'])}", body), Paragraph(f"<b>Recommended Action:</b> {html_escape(vulnerability['fixed_versions'][0]) if vulnerability['fixed_versions'] else 'NO_PATCH_AVAILABLE'}", body), Spacer(1, 8)])
+            story.extend([Paragraph(f"{html_escape(vulnerability_severity(vulnerability))} - {html_escape(vulnerability_identifiers(vulnerability))}", styles['Heading4']), Paragraph(f"<b>Summary:</b> {html_escape(vulnerability['summary'])}", body), Paragraph(f"<b>Recommended Action:</b> {html_escape(vulnerability['fixed_versions'][0]) if vulnerability['fixed_versions'] else 'NO_PATCH_AVAILABLE'}", body), Spacer(1, 8)])
     document.build(story)
 
 

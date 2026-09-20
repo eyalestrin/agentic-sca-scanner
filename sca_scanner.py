@@ -17,7 +17,7 @@ from typing import Dict, List, Any, Optional
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, LongTable, TableStyle
 
 OSV_API_URL = "https://api.osv.dev/v1/query"
 REPORT_MARKDOWN = "sca_report.md"
@@ -361,10 +361,21 @@ def generate_pdf_report(results: List[Dict[str, Any]], output_file: str = MANDAT
     story.extend([Paragraph(f"Total Packages Identified: <b>{summary['total_packages']}</b>", body), Paragraph(f"Vulnerable Packages: <b>{len(summary['vulnerable_packages'])}</b>", body), Paragraph(f"Total Identified Vulnerabilities: <b>{summary['total_vulns']}</b>", body), Paragraph(f"Packages with No Available Upstream Patch: <b>{summary['unpatched_count']}</b>", body), Spacer(1, 10)])
     table_data = [['Package', 'Version', 'Ecosystem', 'Type', 'Vulnerabilities', 'Safe Upgrade']]
     for package in results:
-        vulns = ', '.join(v['id'] for v in package['vulnerabilities']) or 'None'
+        vulnerability_ids = [v['id'] for v in package['vulnerabilities']]
+        visible_ids = vulnerability_ids[:5]
+        if len(vulnerability_ids) > 5:
+            visible_ids.append(f"... and {len(vulnerability_ids) - 5} more; see details")
+        vulns = '<br/>'.join(html_escape(item) for item in visible_ids) or 'None'
         fixes = [v['fixed_versions'][0] for v in package['vulnerabilities'] if v['fixed_versions']]
-        table_data.append([Paragraph(str(package['name']), body), Paragraph(str(package['version']), body), Paragraph(str(package['ecosystem']), body), Paragraph(str(package['type']), body), Paragraph(vulns, body), Paragraph(fixes[0] if fixes else ('NO_PATCH_AVAILABLE' if package['vulnerabilities'] else 'N/A'), body)])
-    table = Table(table_data, repeatRows=1, colWidths=[100, 55, 65, 55, 115, 90])
+        table_data.append([
+            Paragraph(html_escape(package['name']), body),
+            Paragraph(html_escape(package['version']), body),
+            Paragraph(html_escape(package['ecosystem']), body),
+            Paragraph(html_escape(package['type']), body),
+            Paragraph(vulns, body),
+            Paragraph(html_escape(fixes[0] if fixes else ('NO_PATCH_AVAILABLE' if package['vulnerabilities'] else 'N/A')), body),
+        ])
+    table = LongTable(table_data, repeatRows=1, splitByRow=1, colWidths=[100, 55, 65, 55, 115, 90])
     table.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e2e8f0')), ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#cbd5e1')), ('VALIGN', (0, 0), (-1, -1), 'TOP'), ('PADDING', (0, 0), (-1, -1), 5)]))
     story.extend([table, Spacer(1, 14), Paragraph('Detailed Vulnerability Findings &amp; Guidance', styles['Heading2'])])
     if not summary['vulnerable_packages']:

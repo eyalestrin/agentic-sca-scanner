@@ -119,7 +119,8 @@ Executing the scanner produces the following outputs:
 
 2. **`sca_security_report.pdf`:**
    A formatted PDF report generated on every run, regardless of the requested
-   output format.
+   output format. Long vulnerability lists are bounded in the summary table
+   and preserved in the detailed findings section so PDF pages can split safely.
 
 3. **Console Output:**
    Real-time progress logging showing package counts, API querying progress, and final report save confirmation.

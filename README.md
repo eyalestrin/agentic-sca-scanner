@@ -98,8 +98,8 @@ You can use this skill directly within Visual Studio Code or through an AI Codin
    python3 ~/agentic_sca_scanner/sca_scanner.py --path . --output sca_report.md
    ```
 
-   Choose `.md`, `.html`, or `.pdf` for the requested report. Every run also
-   generates the mandatory `sast_security_report.pdf`.
+   Choose `.md`, `.html`, `.json`, or `.pdf` for the requested report. Every
+   run also generates the mandatory `sca_security_report.pdf`.
 
 ### Option 2: AI Agent / Copilot Skill Integration
 1. Copy `SKILL.md` into your workspace skills catalog (e.g., `.vscode/skills/SKILL.md` or `.github/copilot-instructions.md`).
@@ -112,12 +112,12 @@ You can use this skill directly within Visual Studio Code or through an AI Codin
 
 Executing the scanner produces the following outputs:
 
-1. **Requested report (`.md`, `.html`, or `.pdf`):**
+1. **Requested report (`sca_report.md`, `sca_report.html`, or `sca_report.json`):**
    A structured report containing:
    - **Executive Summary:** Total packages scanned, direct vs. transitive count, total vulnerability count, and unpatched package count.
    - **Detailed Findings:** A breakdown for each vulnerable package including Package Name, Declared Version, Ecosystem, Location, Transitive Dependency Chain, Vulnerability ID (CVE/GHSA), Severity Level, Summary, Recommended Upgrade Action, or an explicit `NO_PATCH_AVAILABLE` note.
 
-2. **`sast_security_report.pdf`:**
+2. **`sca_security_report.pdf`:**
    A formatted PDF report generated on every run, regardless of the requested
    output format.
 

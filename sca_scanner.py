@@ -20,7 +20,10 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 
 OSV_API_URL = "https://api.osv.dev/v1/query"
-MANDATORY_PDF = "sast_security_report.pdf"
+REPORT_MARKDOWN = "sca_report.md"
+REPORT_HTML = "sca_report.html"
+REPORT_JSON = "sca_report.json"
+MANDATORY_PDF = "sca_security_report.pdf"
 
 class DependencyScanner:
     def __init__(self, root_dir: str):
@@ -372,11 +375,23 @@ def generate_pdf_report(results: List[Dict[str, Any]], output_file: str = MANDAT
     document.build(story)
 
 
+def generate_json_report(results: List[Dict[str, Any]], output_file: str = REPORT_JSON):
+    Path(output_file).write_text(json.dumps({
+        'summary': {
+            key: value for key, value in report_summary(results).items()
+            if key != 'vulnerable_packages'
+        },
+        'packages': results,
+    }, indent=2), encoding='utf-8')
+
+
 def generate_reports(results: List[Dict[str, Any]], output_file: str):
     output_path = Path(output_file)
     suffix = output_path.suffix.lower()
     if suffix == '.html':
         generate_html_report(results, output_file)
+    elif suffix == '.json':
+        generate_json_report(results, output_file)
     elif suffix == '.pdf':
         generate_pdf_report(results, output_file)
     else:
@@ -390,7 +405,7 @@ def generate_reports(results: List[Dict[str, Any]], output_file: str):
 def main():
     parser = argparse.ArgumentParser(description="Agentic SCA & Dependency Scanner")
     parser.add_argument("--path", required=True, help="Path to project directory to scan")
-    parser.add_argument("--output", default="sca_report.md", help="Output markdown report file path")
+    parser.add_argument("--output", default=REPORT_MARKDOWN, help="Output report path (.md, .html, .json, or .pdf)")
 
     args = parser.parse_args()
 
